@@ -1,0 +1,43 @@
+services:
+  postgres:
+    build: ./database
+    image: "database"
+    container_name: database
+    secrets:
+      - db_password
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password # Postregres automatically reads the password from the file specified by this environment variable
+    ports: # We can keep the mapping only for development purposes, in production we will use the internal network to connect to the database
+      - "5432:5432"
+    networks:
+      - ft_network
+    volumes:
+      - database_vol:/var/lib/postgresql
+    healthcheck:
+      # Pings the database using the user and db name from .env file
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+
+networks:
+  ft_network:
+    name: "ft_network"
+
+volumes:
+  database_vol:
+    name: database_vol
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '${HOME}/data/database'
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
