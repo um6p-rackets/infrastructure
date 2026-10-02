@@ -94,7 +94,18 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-
+  # ========================================== Frontend ==========================================
+  frontend:
+    build:
+      context: ../frontend
+    image: "frontend"
+    container_name: frontend
+    networks:
+      - ft_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
 
 
 # ========================================== Networks, Volumes and Secrets ==========================================
