@@ -6,20 +6,31 @@ RM				= rm -rf
 
 DATABASE_VOL		= $(HOME)/data/database
 
-COMPOSE			= docker compose -f ./docker-compose.dev.yml
+MODE 			= dev
+
+ifeq ($(MODE), dev)
+	COMPOSE			= docker compose -f ./docker-compose.dev.yml
+else ifeq ($(MODE), prod)
+	COMPOSE			= docker compose -f ./docker-compose.yml
+else
+	$(error "Invalid MODE specified. Please use 'dev' or 'prod'.")
+endif
 
 # ==============================================================================
 #                                 TARGETS
 # ==============================================================================
-all: init build
+all: setup build
 
-init:
+setup: init
+	@./setup.sh
+
+init: 
 	$(MKDIR) $(DATABASE_VOL)
 
-up: init
+up: setup
 	$(COMPOSE) up -d
 
-build: init
+build: setup
 	$(COMPOSE) up -d --build
 
 down:
