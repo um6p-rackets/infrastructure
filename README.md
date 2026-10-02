@@ -1,72 +1,98 @@
-# Racket UM6P - Infrastructure
+# Infrastructure
 
-This repository is the central control hub for the Racket UM6P platform. It contains the Docker Compose configurations, the NGINX API Gateway, the PostgreSQL database setup, and the orchestration scripts needed to run the entire microservices architecture both locally and in production.
+Docker setup for the project. It runs the database and gateway, and clones the frontend and backend repos next to this one.
 
-## 📁 Repository Structure
+## Requirements
 
-here is what each file and folder does:
+- Docker + Docker Compose
+- make
+- git
 
-* **`setup.sh`**: A bash script that automatically clones the `backend` and `frontend` repositories into the same parent directory and generates your `.env` file.
-* **`Makefile`**: The central command-line interface for the team. It abstracts complex Docker Compose commands into simple, memorable shortcuts.
-* **`docker-compose.yml`**: The base production configuration. It defines the core network, the database, and the gateway, and expects pre-built microservice images.
-* **`docker-compose.dev.yml`**: The local development override. It maps local source code into the containers for hot-reloading and builds images directly from your local `backend` and `frontend` folders.
-* **`database/`**: Contains the PostgreSQL infrastructure.
-* `Dockerfile`: Builds the custom database image.
-* `tools/`: Directory containing database initialization scripts (e.g., creating `db_auth`, `db_club`, `db_notif` on first boot).
-
-
-* **`gateway/`**: Contains the NGINX API Gateway infrastructure.
-* `Dockerfile`: Builds the NGINX reverse proxy image.
-* `conf/`: Directory containing the NGINX routing configuration files that direct traffic to the correct microservice or frontend.
-
-
-
-## 🚀 Getting Started (Local Development)
-
-To get the entire stack running on your machine for the first time, follow these steps:
-
-1. **Clone this repository** into a dedicated workspace folder:
-```bash
-git clone git@github.com:um6p-rackets/infrastructure.git
-cd racket-infra
+## Structure
 
 ```
-
-
-2. **Run the setup script** to clone the sibling repositories:
-```bash
-make setup
-
+infrastructure/
+├── database/                 # PostgreSQL image, config and init scripts
+├── gateway/                  # Nginx gateway
+├── secrets/                  # Secret files (not committed)
+├── docker-compose.dev.yml    # Development
+├── docker-compose.yml        # Production
+├── .env.example
+└── Makefile
 ```
 
-
-3. **Build and start the local development stack**:
-```bash
-make dev-build
+After `make setup`, the parent directory looks like this:
 
 ```
+../
+├── infrastructure/
+├── frontend/
+└── backend/
+```
 
+## Getting started
 
+1. Create the env file and fill in the values:
 
-Once running, the NGINX Gateway will listen on port `80` (or `8080` if configured), routing `/api/*` traffic to your NestJS services and the rest to your Next.js frontend.
+   ```bash
+   cp .env.example .env
+   ```
 
-## 🛠️ Essential Makefile Commands
+2. Create the password files in `secrets/` (default password: `pass1337`):
 
-Use these commands during your daily workflow to manage the system:
+   ```bash
+   mkdir -p secrets
+   echo "pass1337" > secrets/db_password.txt
+   echo "pass1337" > secrets/auth_db_password.txt
+   echo "pass1337" > secrets/club_db_password.txt
+   echo "pass1337" > secrets/notification_db_password.txt
+   ```
 
-| Command | Description |
-| --- | --- |
-| `make setup` | Clones frontend/backend repos and initializes the `.env` file. |
-| `make dev` | Starts the local environment (uses existing builds + hot reload). |
-| `make dev-build` | Forces a rebuild of all local Dockerfiles and starts the environment. |
-| `make dev-down` | Stops and removes the local development containers. |
-| `make logs` | Tails the logs for all running containers in real-time. |
-| `make logs-gateway` | Tails only the NGINX Gateway logs (useful for debugging API routing). |
-| `make db-shell` | Drops you into an interactive `psql` terminal inside the database container. |
-| `make db-reset` | **WARNING:** Destroys the database volume and restarts it from scratch. |
-| `make clean` | Prunes dangling Docker images, volumes, and networks to free up disk space. |
+   > Use this default for development only. Change the passwords in production.
 
-## 🏗️ Architecture Notes for the Team
+3. Clone the repos, build and start:
 
-* **Database Isolation:** Even though there is only one PostgreSQL container running (`racket_db`), it holds three completely separate logical databases (`db_auth`, `db_club`, `db_notif`). Do not attempt to write SQL joins across these databases.
-* **API Gateway Routing:** All frontend API calls must be made to the single gateway domain, not directly to the microservices. NGINX will route the request based on the path (e.g., `/api/clubs/` goes to the Club Service). Check `gateway/conf/` if a route is returning a 404.
+   ```bash
+   make
+   ```
+
+## Modes
+
+Default mode is `dev`. For production:
+
+```bash
+MODE=prod make up
+```
+
+## Commands
+
+| Command              | What it does                                      |
+| -------------------- | ------------------------------------------------- |
+| `make setup`         | Create data folder and clone frontend and backend |
+| `make up`            | Start containers                                  |
+| `make build`         | Build images and start containers                 |
+| `make down`          | Stop and remove containers                        |
+| `make stop`          | Stop containers                                   |
+| `make start`         | Start stopped containers                          |
+| `make status`        | Show running containers                           |
+| `make pull_frontend` | `git pull` in `../frontend`                       |
+| `make pull_backend`  | `git pull` in `../backend`                        |
+| `make clean`         | Remove containers, volumes and orphans            |
+| `make fclean`        | `clean` + delete database data + prune Docker     |
+| `make re`            | `fclean` then rebuild                             |
+
+> **Warning:** `make fclean` deletes `~/data/database` and runs `docker system prune -a --volumes`, which removes all unused Docker images and volumes on your machine.
+
+## Database
+
+- PostgreSQL, port `5432` in dev
+- Data is stored in `~/data/database`
+- User and database name come from `.env` (`DB_USER`, `DB_NAME`)
+- Passwords are read from `secrets/`:
+
+| File                           | Used for             |
+| ------------------------------ | -------------------- |
+| `db_password.txt`              | Main database user   |
+| `auth_db_password.txt`         | Auth service         |
+| `club_db_password.txt`         | Club service         |
+| `notification_db_password.txt` | Notification service |
