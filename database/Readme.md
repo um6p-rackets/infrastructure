@@ -1,50 +1,78 @@
-# PostgreSQL Database Architecture
+# PostgreSQL Database Architecture (Schema-per-Service)
 
 ## Overview
-PostgreSQL is a highly stable, secure, and strictly-typed open-source relational database. For this project, we are using the lightweight `postgres:18.6-alpine3.24` image.
+For the `ft_transcendence` project, we are using the **Shared Database Microservices Pattern**. Instead of running multiple separate database containers (which breaks relational foreign keys) or using one monolithic `public` schema (which violates microservice isolation), we use a **Schema-per-Service** design.
 
-Unlike simpler databases (like SQLite or MariaDB), PostgreSQL enforces strict user roles, schema ownership, and connection limits. It is designed to handle high-concurrency environments, making it the ideal choice for managing our NextJS/NestJS real-time application states (users, matches, chat history).
+We run a single lightweight `postgres:18.6-alpine3.24` container, but internally, the database is partitioned into strict, logical schemas (`auth`, `club`, `notification`). Each NestJS backend service has its own dedicated PostgreSQL Role (user) and is locked into its respective schema.
+
+### Advantages of this Design
+1. **Data Integrity (ACID compliance):** We retain PostgreSQL's native ability to enforce Foreign Keys and `ON DELETE CASCADE` across different microservices (e.g., deleting a User in `auth` automatically cascades to their `club` memberships).
+2. **Security & Isolation:** The `auth` service logs in as `auth_svc` and cannot accidentally drop tables or modify data owned by the `club` service.
+3. **No Distributed Transactions:** We avoid the immense complexity of "Saga patterns" or slow cross-container HTTP network requests just to combine user data with club data.
+4. **Automated Migrations:** We do not manually write SQL `CREATE TABLE` scripts. The database provides the empty "plots of land" (schemas), and our backend ORM constructs the buildings (tables).
 
 ---
 
 ## Configuration Files
 
 ### 1. The `Dockerfile`
-Our Dockerfile is kept minimal and secure. It relies on the official image's built-in initialization mechanics.
+Our Dockerfile copies our custom configuration and our initialization shell script. It enforces strict permission boundaries before booting.
 
 ```dockerfile
 FROM postgres:18.6-alpine3.24
 
-# The "Magic Folder": Postgres automatically executes any .sql or .sh files 
-# placed in /docker-entrypoint-initdb.d/ in alphabetical order, 
-# ONLY during the very first time the database boots.
-COPY init.sql /docker-entrypoint-initdb.d/init.sql
+# 1. Copy the custom configuration file
+COPY ./config/postgresql.conf /etc/postgresql/postgresql.conf
 
-# Expose the default PostgreSQL port for internal network communication
+# 2. Copy the initialization script to the magic folder
+COPY ./tools/setup.sh /docker-entrypoint-initdb.d/setup.sh
+RUN chmod +x /docker-entrypoint-initdb.d/setup.sh
+
+# 3. Security: Change ownership to the restricted 'postgres' user
+RUN chown -R postgres:postgres /docker-entrypoint-initdb.d/ \
+    && chown postgres:postgres /etc/postgresql/postgresql.conf \
+    && chmod 644 /etc/postgresql/postgresql.conf
+
+# 4. Expose the default port for the Docker internal network
 EXPOSE 5432
+
+# 5. Boot using the custom configuration
+CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
 
 ```
 
-### 2. The Schema Initialization (`init.sql`)
+### 2. The Initialization Script (`setup.sh`)
 
-This script automatically generates our tables and seeds initial test data before the backend even connects.
+Because we rely on our backend ORM to create the tables, our database initialization only handles **infrastructure provisioning**. This script dynamically reads Docker secrets to create isolated roles and binds them to specific search paths.
 
-```sql
--- Enable UUID generation function (essential for secure primary keys)
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+```bash
+#!/bin/sh
+set -e
 
--- Create the base accounts table
-CREATE TABLE IF NOT EXISTS accounts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    username VARCHAR(50) UNIQUE NOT NULL,
-    intra_id VARCHAR(50) UNIQUE NOT NULL,
-    avatar_url VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+# Connect to Postgres and execute setup commands
+psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  -v auth_pw="$(cat /run/secrets/auth_db_password)" \
+  -v club_pw="$(cat /run/secrets/club_db_password)" \
+  -v notif_pw="$(cat /run/secrets/notification_db_password)" <<'EOF'
 
--- Seed an initial admin user for development testing
-INSERT INTO accounts (username, intra_id) 
-VALUES ('abnsila', 'abnsila_42');
+  -- Create isolated service roles with passwords
+  CREATE ROLE auth_svc  LOGIN PASSWORD :'auth_pw';
+  CREATE ROLE club_svc  LOGIN PASSWORD :'club_pw';
+  CREATE ROLE notif_svc LOGIN PASSWORD :'notif_pw';
+
+  -- Create schemas owned by their respective services
+  CREATE SCHEMA auth         AUTHORIZATION auth_svc;
+  CREATE SCHEMA club         AUTHORIZATION club_svc;
+  CREATE SCHEMA notification AUTHORIZATION notif_svc;
+
+  -- Default each service to its own schema (so they don't use 'public')
+  ALTER ROLE auth_svc  SET search_path = auth;
+  ALTER ROLE club_svc  SET search_path = club;
+  ALTER ROLE notif_svc SET search_path = notification;
+
+  -- Lock down the public schema for security
+  REVOKE ALL ON SCHEMA public FROM PUBLIC;
+EOF
 
 ```
 
@@ -52,57 +80,60 @@ VALUES ('abnsila', 'abnsila_42');
 
 ## The "First Boot" Setup Rule (CRITICAL)
 
-PostgreSQL is highly protective of your data. The automated setup process (which runs `init.sql` and reads your password secret) **only triggers if the mapped storage volume is 100% empty.**
+PostgreSQL is highly protective of your data. The automated setup process (which runs `setup.sh`) **only triggers if the mapped storage volume is 100% empty.**
 
-If you modify `init.sql` and rebuild the container, PostgreSQL will see existing data in the storage directory, skip the initialization folder, and your new tables will not be created.
+If you modify `setup.sh` and rebuild the container, PostgreSQL will see existing data in the storage directory, skip the initialization folder, and your new schemas/roles will not be created.
 
-**To apply changes to the schema:** You must completely wipe the host data directory/volume before rebuilding the image.
+**To apply infrastructure changes:** You must completely wipe the host data volume using `make fclean` before rebuilding the stack.
 
 ---
 
-## Testing & Interaction Commands
+## Testing & Verification Commands
 
-Once the container is running and healthy, use these commands to interact with the database directly.
+Once the container is running and healthy, use these commands to verify the Schema-per-Service architecture was built correctly.
 
-### 1. Enter the Container
+### 1. Verify Superuser Infrastructure
 
-Access the container's shell:
+Enter the container and connect as the admin:
 
 ```bash
 docker exec -it database sh
-
-```
-
-### 2. Connect to the Database
-
-Connect using the PostgreSQL interactive terminal (`psql`). You must specify the user (`-U`) and the database name (`-d`) defined in your environment variables.
-
-```bash
 psql -U admin -d rackets_db
 
 ```
 
-*(Your prompt will change to `rackets_db=#`)*
+Inside the `psql` prompt, check your Roles and Schemas:
 
-### 3. Essential `psql` Navigation Commands
+* `\du` : Lists all roles. You should see `admin`, `auth_svc`, `club_svc`, and `notif_svc`.
+* `\dn+` : Lists all schemas. You should see `auth`, `club`, and `notification` owned by their respective service roles.
+* `\q` : Quit the database.
 
-PostgreSQL uses backslash commands for system navigation instead of standard SQL queries:
+### 2. Verify Service Isolation (The Ultimate Test)
 
-* `\l` : List all available databases.
-* `\dt` : List all tables in the current database.
-* `\d <tablename>` : Describe a specific table (shows columns, data types, and constraints).
-* `\x` : Toggle expanded display (makes long rows easier to read).
-* `\q` : Quit the database and return to the container shell.
+To prove the architecture works, attempt to log in as a specific microservice (it will prompt for the password defined in your secrets):
 
-### 4. Verify the Initialization
-
-To confirm your `init.sql` worked correctly, run standard SQL queries inside the `psql` prompt:
-
-```sql
--- Check if the table exists and structure is correct
-\d accounts;
-
--- Check if the test user was seeded successfully
-SELECT * FROM accounts;
+```bash
+psql -U auth_svc -d rackets_db -W
 
 ```
+
+Once inside, verify that your default routing is locked to your specific schema:
+
+```sql
+SHOW search_path;
+
+```
+
+*(This should output `auth`, proving the service is perfectly isolated).*
+
+---
+
+## Backend Integration (How NestJS Uses This)
+
+Our NestJS microservices will connect to this database using **Prisma** (our chosen ORM).
+
+Because the database handles the isolation layer, the backends require very little configuration:
+
+1. **Connection Strings:** Each NestJS service gets a unique database URL injected via `.env`. For example, the Auth service connects using `postgres://auth_svc:<secret>@database:5432/rackets_db?schema=auth`.
+2. **Automated Migrations:** When a backend container boots, Prisma automatically detects the empty `auth` schema, reads our TypeScript backend models, and executes the SQL to generate the `users` table seamlessly.
+3. **Cross-Service References:** Because all schemas live in `rackets_db`, Prisma can safely declare foreign key relations (e.g., Club Service mapping a member to `auth.users`) while respecting the database boundaries.
