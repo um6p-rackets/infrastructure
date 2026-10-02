@@ -1,19 +1,22 @@
 # ==============================================================================
 #                                VARIABLES
 # ==============================================================================
-MKDIR			= mkdir -p
-RM				= rm -rf
+MKDIR        = mkdir -p
+RM           = rm -rf
 
-DATABASE_VOL		= $(HOME)/data/database
+FRONTEND_URL = https://github.com/um6p-rackets/frontend.git
+BACKEND_URL  = https://github.com/um6p-rackets/backend.git
 
-MODE 			= dev
+DATABASE_VOL = $(HOME)/data/database
+
+MODE ?= dev
 
 ifeq ($(MODE), dev)
-	COMPOSE			= docker compose -f ./docker-compose.dev.yml
+  COMPOSE = docker compose -f ./docker-compose.dev.yml
 else ifeq ($(MODE), prod)
-	COMPOSE			= docker compose -f ./docker-compose.yml
+  COMPOSE = docker compose -f ./docker-compose.yml
 else
-	$(error "Invalid MODE specified. Please use 'dev' or 'prod'.")
+  $(error Invalid MODE specified. Please use 'dev' or 'prod')
 endif
 
 # ==============================================================================
@@ -21,10 +24,15 @@ endif
 # ==============================================================================
 all: setup build
 
-setup: init
-	@./setup.sh
+setup: init ../frontend ../backend
 
-init: 
+../frontend:
+	git clone $(FRONTEND_URL) $@
+
+../backend:
+	git clone $(BACKEND_URL) $@
+
+init:
 	$(MKDIR) $(DATABASE_VOL)
 
 up: setup
@@ -52,6 +60,11 @@ fclean: clean
 	@sudo $(RM) $(DATABASE_VOL)
 	docker system prune -a --volumes --force
 
+pull_backend: ../backend
+	git -C ../backend pull
+pull_frontend: ../frontend
+	git -C ../frontend pull
+
 re: fclean all
 
-.PHONY: all init up build down clean fclean re
+.PHONY: all setup init up build down stop start status clean fclean pull_backend re pull_frontend pull_frontend
