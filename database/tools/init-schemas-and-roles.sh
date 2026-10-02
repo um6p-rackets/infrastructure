@@ -3,9 +3,9 @@
 set -e
 
 psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  -v auth_pw="$(cat /run/secrets/auth_db_password)" \
-  -v club_pw="$(cat /run/secrets/club_db_password)" \
-  -v notif_pw="$(cat /run/secrets/notification_db_password)" <<'EOF'
+  -v auth_pw="$(cat /run/secrets/auth_service_password)" \
+  -v club_pw="$(cat /run/secrets/club_service_password)" \
+  -v notif_pw="$(cat /run/secrets/notification_service_password)" <<'EOF'
 
   CREATE ROLE auth_service  LOGIN PASSWORD :'auth_pw';
   CREATE ROLE club_service  LOGIN PASSWORD :'club_pw';

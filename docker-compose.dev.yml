@@ -1,15 +1,20 @@
 services:
-  postgres:
+  # ========================================== Database ==========================================
+  database:
     build: ./database
     image: "database"
     container_name: database
     secrets:
       - db_password
+      - auth_service_password
+      - club_service_password
+      - notification_service_password
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password # Postregres automatically reads the password from the file specified by this environment variable
-    ports: # We can keep the mapping only for development purposes, in production we will use the internal network to connect to the database
+    ports:
+      # We can keep the mapping only for development purposes, in production we will use the internal network to connect to the database
       - "5432:5432"
     networks:
       - ft_network
@@ -17,17 +22,102 @@ services:
       - database_vol:/var/lib/postgresql
     healthcheck:
       # Pings the database using the user and db name from .env file
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     restart: unless-stopped
 
+  # ========================================== Gateway ==========================================
+  gateway:
+    build:
+      context: ./gateway
+    image: "gateway"
+    container_name: gateway
+    ports:
+      - 443:443
+    networks:
+      - bridge_network
+      - ft_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ========================================== Authentication ==========================================
+  auth:
+    build:
+      context: ../backend
+      args:
+        APP_NAME: "auth-service"
+    image: "auth-service"
+    container_name: auth-service
+    # environment:
+    # DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@database:5432/${DB_NAME}
+    # JWT_SECRET: ${JWT_SECRET}
+    # PORT: ${AUTH_PORT}
+    networks:
+      - ft_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+# ========================================== Club ==========================================
+  club:
+    build:
+      context: ../backend
+      args:
+        APP_NAME: "club-service"
+    image: "club-service"
+    container_name: club-service
+    networks:
+      - ft_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ========================================== Notification ==========================================
+  notification:
+    build:
+      context: ../backend
+      args:
+        APP_NAME: "notification-service"
+    image: "notification-service"
+    container_name: notification-service
+    networks:
+      - ft_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ========================================== Frontend ==========================================
+  frontend:
+    build:
+      context: ../frontend
+    image: "frontend"
+    container_name: frontend
+    networks:
+      - ft_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+# ========================================== Networks, Volumes and Secrets ==========================================
 
 networks:
   ft_network:
+    driver: bridge
     name: "ft_network"
+    internal: true
+  bridge_network:
+    driver: bridge
+    name: "bridge_network"
 
 volumes:
   database_vol:
@@ -41,3 +131,9 @@ volumes:
 secrets:
   db_password:
     file: ./secrets/db_password.txt
+  auth_service_password:
+    file: ./secrets/auth_service_password.txt
+  club_service_password:
+    file: ./secrets/club_service_password.txt
+  notification_service_password:
+    file: ./secrets/notification_service_password.txt
