@@ -39,7 +39,7 @@ clean: down
 
 fclean: clean
 	@sudo $(RM) $(DATABASE_VOL)
-	docker system prune -a --force
+	docker system prune -a --volumes --force
 
 re: fclean all
 
