@@ -4,34 +4,32 @@ This repository is the central control hub for the Racket UM6P platform. It cont
 
 ## 📁 Repository Structure
 
-here is what each file and folder does:
+Here is what each file and folder does:
 
 * **`setup.sh`**: A bash script that automatically clones the `backend` and `frontend` repositories into the same parent directory and generates your `.env` file.
 * **`Makefile`**: The central command-line interface for the team. It abstracts complex Docker Compose commands into simple, memorable shortcuts.
 * **`docker-compose.yml`**: The base production configuration. It defines the core network, the database, and the gateway, and expects pre-built microservice images.
 * **`docker-compose.dev.yml`**: The local development override. It maps local source code into the containers for hot-reloading and builds images directly from your local `backend` and `frontend` folders.
 * **`database/`**: Contains the PostgreSQL infrastructure.
-* `Dockerfile`: Builds the custom database image.
-* `tools/`: Directory containing database initialization scripts (e.g., creating `db_auth`, `db_club`, `db_notif` on first boot).
-
-
+  * `Dockerfile`: Builds the custom database image.
+  * `config/`: Contains the performance-tuned `postgresql.conf` file.
+  * `tools/`: Directory containing database initialization scripts (specifically `01-init-schemas-and-roles.sh`, which provisions isolated service schemas and RBAC roles on first boot).
 * **`gateway/`**: Contains the NGINX API Gateway infrastructure.
-* `Dockerfile`: Builds the NGINX reverse proxy image.
-* `conf/`: Directory containing the NGINX routing configuration files that direct traffic to the correct microservice or frontend.
+  * `Dockerfile`: Builds the NGINX reverse proxy image.
+  * `conf/`: Directory containing the NGINX routing configuration files that direct traffic to the correct microservice or frontend.
 
-
+---
 
 ## 🚀 Getting Started (Local Development)
 
 To get the entire stack running on your machine for the first time, follow these steps:
 
 1. **Clone this repository** into a dedicated workspace folder:
-```bash
-git clone git@github.com:um6p-rackets/infrastructure.git
-cd racket-infra
+   ```bash
+   git clone git@github.com:um6p-rackets/infrastructure.git
+   cd infrastructure
 
 ```
-
 
 2. **Run the setup script** to clone the sibling repositories:
 ```bash
@@ -50,6 +48,8 @@ make dev-build
 
 Once running, the NGINX Gateway will listen on port `80` (or `8080` if configured), routing `/api/*` traffic to your NestJS services and the rest to your Next.js frontend.
 
+---
+
 ## 🛠️ Essential Makefile Commands
 
 Use these commands during your daily workflow to manage the system:
@@ -66,7 +66,10 @@ Use these commands during your daily workflow to manage the system:
 | `make db-reset` | **WARNING:** Destroys the database volume and restarts it from scratch. |
 | `make clean` | Prunes dangling Docker images, volumes, and networks to free up disk space. |
 
+---
+
 ## 🏗️ Architecture Notes for the Team
 
-* **Database Isolation:** Even though there is only one PostgreSQL container running (`racket_db`), it holds three completely separate logical databases (`db_auth`, `db_club`, `db_notif`). Do not attempt to write SQL joins across these databases.
+* **Schema-per-Service Architecture:** We use a single PostgreSQL database container (`rackets_db`), but internally partition it into isolated logical schemas (`auth`, `club`, `notification`). Each NestJS backend service connects using a dedicated database role (`auth_svc`, `club_svc`, `notif_svc`) with its `search_path` locked to its respective schema. This achieves microservice isolation while fully preserving PostgreSQL’s native relational power (foreign keys and cascading deletes across schemas).
+* **Automated Migrations:** Database tables are not manually written here. Instead, each NestJS service uses Prisma to automatically deploy and manage its own tables inside its designated schema upon startup.
 * **API Gateway Routing:** All frontend API calls must be made to the single gateway domain, not directly to the microservices. NGINX will route the request based on the path (e.g., `/api/clubs/` goes to the Club Service). Check `gateway/conf/` if a route is returning a 404.
