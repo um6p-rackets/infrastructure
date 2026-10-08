@@ -1,3 +1,21 @@
+# ========================================== Shared Backend Template ==========================================
+x-backend-template: &backend-template # We can now Injects the entire shared block! [DRY principle]
+  networks:
+    - ft_network
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+    database:
+      condition: service_healthy
+  restart: unless-stopped
+
+x-backend-env: &backend-env
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_USER: ${RABBITMQ_USER}
+  RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
+  #   - POSTGRES_URL=postgresql://${DB_USER}:1337@database:5432/${DB_NAME}
+  #   - RABBITMQ_URL=amqp://${RABBITMQ_USER}:1337@rabbitmq:5672
+
 services:
   # ========================================== Database ==========================================
   database:
@@ -12,10 +30,15 @@ services:
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_DB: ${DB_NAME}
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password # Postregres automatically reads the password from the file specified by this environment variable
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      AUTH_USER: ${AUTH_USER}
+      CLUB_USER: ${CLUB_USER}
+      NOTIFICATION_USER: ${NOTIFICATION_USER}
+      AUTH_SCHEMA: ${AUTH_SCHEMA}
+      CLUB_SCHEMA: ${CLUB_SCHEMA}
+      NOTIFICATION_SCHEMA: ${NOTIFICATION_SCHEMA}
     ports:
-      # We can keep the mapping only for development purposes, in production we will use the internal network to connect to the database
-      - "5432:5432"
+      # We can keep the mapping only for development purposes
     networks:
       - ft_network
     volumes:
@@ -29,12 +52,12 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # ========================================== Gateway ==========================================
-  gateway:
+  # ========================================== nginx ==========================================
+  nginx:
     build:
-      context: ./gateway
-    image: "gateway"
-    container_name: gateway
+      context: ./nginx
+    image: "nginx"
+    container_name: nginx
     ports:
       - 443:443
     networks:
@@ -45,54 +68,104 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ========================================== Rabbitmq ==========================================
+  rabbitmq:
+    build:
+      context: ./rabbitmq
+    image: "rabbitmq"
+    container_name: rabbitmq
+    secrets:
+      - rabbitmq_password
+    environment:
+      RABBITMQ_USER: ${RABBITMQ_USER}
+    ports:
+      # - "5672:5672" # (AMQP Protocol): This is the "Engine" port. It uses a highly efficient, binary messaging protocol
+      - "15672:15672" # (HTTP Protocol): This is the "Human" port. It serves the Management UI web dashboard
+    networks:
+      - bridge_network
+      - ft_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+# ========================================== API Gateway ==========================================
+  api_gateway:
+    <<: *backend-template
+    build:
+      context: ../backend
+      args:
+        APP_NAME: api-gateway
+    image: "api-gateway"
+    container_name: api-gateway
+    environment:
+      <<: *backend-env
+      # JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
+    secrets:
+      # No DB secret: the gateway has no DB
+      - rabbitmq_password
+      # - jwt_access_secret   
+
+
   # ========================================== Authentication ==========================================
   auth:
+    <<: *backend-template
     build:
       context: ../backend
       args:
-        APP_NAME: "auth-service"
-    image: "auth-service"
+        APP_NAME: auth-service
+    image: 'auth-service'
     container_name: auth-service
-    # environment:
-    # DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@database:5432/${DB_NAME}
-    # JWT_SECRET: ${JWT_SECRET}
-    # PORT: ${AUTH_PORT}
-    networks:
-      - ft_network
-    depends_on:
-      database:
-        condition: service_healthy
-    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${AUTH_USER}
+      DB_SCHEMA: ${AUTH_SCHEMA}
+      DB_PASSWORD_FILE: /run/secrets/auth_service_password
+      # JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
+      # JWT_ACCESS_TTL: 15m
+    secrets: 
+      - rabbitmq_password
+      - auth_service_password
+      # - jwt_access_secret
 
-# ========================================== Club ==========================================
+  # ========================================== Club ==========================================
   club:
+    <<: *backend-template
     build:
       context: ../backend
       args:
-        APP_NAME: "club-service"
+        APP_NAME: club-service
     image: "club-service"
     container_name: club-service
-    networks:
-      - ft_network
-    depends_on:
-      database:
-        condition: service_healthy
-    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${CLUB_USER}
+      DB_SCHEMA: ${CLUB_SCHEMA}
+      DB_PASSWORD_FILE: /run/secrets/club_service_password
+    secrets: [rabbitmq_password, club_service_password]
 
   # ========================================== Notification ==========================================
+
   notification:
+    <<: *backend-template
     build:
       context: ../backend
       args:
-        APP_NAME: "notification-service"
+        APP_NAME: notification-service
     image: "notification-service"
     container_name: notification-service
-    networks:
-      - ft_network
-    depends_on:
-      database:
-        condition: service_healthy
-    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${NOTIFICATION_USER}
+      DB_SCHEMA: ${NOTIFICATION_SCHEMA}
+      DB_PASSWORD_FILE: /run/secrets/notification_service_password
+    secrets: [rabbitmq_password, notification_service_password]
 
   # ========================================== Frontend ==========================================
   frontend:
@@ -137,3 +210,5 @@ secrets:
     file: ./secrets/club_service_password.txt
   notification_service_password:
     file: ./secrets/notification_service_password.txt
+  rabbitmq_password:
+    file: ./secrets/rabbitmq_password.txt
