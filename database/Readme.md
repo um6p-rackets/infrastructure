@@ -7,7 +7,7 @@ We run a single lightweight `postgres:18.6-alpine3.24` container, but internally
 
 ### Advantages of this Design
 1. **Data Integrity (ACID compliance):** We retain PostgreSQL's native ability to enforce Foreign Keys and `ON DELETE CASCADE` across different microservices (e.g., deleting a User in `auth` automatically cascades to their `club` memberships).
-2. **Security & Isolation:** The `auth` service logs in as `auth_svc` and cannot accidentally drop tables or modify data owned by the `club` service.
+2. **Security & Isolation:** The `auth` service logs in as `auth_service` and cannot accidentally drop tables or modify data owned by the `club` service.
 3. **No Distributed Transactions:** We avoid the immense complexity of "Saga patterns" or slow cross-container HTTP network requests just to combine user data with club data.
 4. **Automated Migrations:** We do not manually write SQL `CREATE TABLE` scripts. The database provides the empty "plots of land" (schemas), and our backend ORM constructs the buildings (tables).
 
@@ -56,19 +56,19 @@ psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -v notif_pw="$(cat /run/secrets/notification_db_password)" <<'EOF'
 
   -- Create isolated service roles with passwords
-  CREATE ROLE auth_svc  LOGIN PASSWORD :'auth_pw';
-  CREATE ROLE club_svc  LOGIN PASSWORD :'club_pw';
-  CREATE ROLE notif_svc LOGIN PASSWORD :'notif_pw';
+  CREATE ROLE auth_service  LOGIN PASSWORD :'auth_pw';
+  CREATE ROLE club_service  LOGIN PASSWORD :'club_pw';
+  CREATE ROLE notif_service LOGIN PASSWORD :'notif_pw';
 
   -- Create schemas owned by their respective services
-  CREATE SCHEMA auth         AUTHORIZATION auth_svc;
-  CREATE SCHEMA club         AUTHORIZATION club_svc;
-  CREATE SCHEMA notification AUTHORIZATION notif_svc;
+  CREATE SCHEMA auth         AUTHORIZATION auth_service;
+  CREATE SCHEMA club         AUTHORIZATION club_service;
+  CREATE SCHEMA notification AUTHORIZATION notif_service;
 
   -- Default each service to its own schema (so they don't use 'public')
-  ALTER ROLE auth_svc  SET search_path = auth;
-  ALTER ROLE club_svc  SET search_path = club;
-  ALTER ROLE notif_svc SET search_path = notification;
+  ALTER ROLE auth_service  SET search_path = auth;
+  ALTER ROLE club_service  SET search_path = club;
+  ALTER ROLE notif_service SET search_path = notification;
 
   -- Lock down the public schema for security
   REVOKE ALL ON SCHEMA public FROM PUBLIC;
@@ -104,7 +104,7 @@ psql -U admin -d rackets_db
 
 Inside the `psql` prompt, check your Roles and Schemas:
 
-* `\du` : Lists all roles. You should see `admin`, `auth_svc`, `club_svc`, and `notif_svc`.
+* `\du` : Lists all roles. You should see `admin`, `auth_service`, `club_service`, and `notif_service`.
 * `\dn+` : Lists all schemas. You should see `auth`, `club`, and `notification` owned by their respective service roles.
 * `\q` : Quit the database.
 
@@ -113,7 +113,7 @@ Inside the `psql` prompt, check your Roles and Schemas:
 To prove the architecture works, attempt to log in as a specific microservice (it will prompt for the password defined in your secrets):
 
 ```bash
-psql -U auth_svc -d rackets_db -W
+psql -U auth_service -d rackets_db -W
 
 ```
 
@@ -134,6 +134,6 @@ Our NestJS microservices will connect to this database using **Prisma** (our cho
 
 Because the database handles the isolation layer, the backends require very little configuration:
 
-1. **Connection Strings:** Each NestJS service gets a unique database URL injected via `.env`. For example, the Auth service connects using `postgres://auth_svc:<secret>@database:5432/rackets_db?schema=auth`.
+1. **Connection Strings:** Each NestJS service gets a unique database URL injected via `.env`. For example, the Auth service connects using `postgres://auth_service:<secret>@database:5432/rackets_db?schema=auth`.
 2. **Automated Migrations:** When a backend container boots, Prisma automatically detects the empty `auth` schema, reads our TypeScript backend models, and executes the SQL to generate the `users` table seamlessly.
 3. **Cross-Service References:** Because all schemas live in `rackets_db`, Prisma can safely declare foreign key relations (e.g., Club Service mapping a member to `auth.users`) while respecting the database boundaries.
