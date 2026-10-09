@@ -8,6 +8,7 @@ FRONTEND_URL = https://github.com/um6p-rackets/frontend.git
 BACKEND_URL  = https://github.com/um6p-rackets/backend.git
 
 DATABASE_VOL = $(HOME)/data/database
+RABBITMQ_VOL = $(HOME)/data/rabbitmq
 
 MODE ?= dev
 
@@ -34,6 +35,7 @@ setup: init ../frontend ../backend
 
 init:
 	$(MKDIR) $(DATABASE_VOL)
+	$(MKDIR) $(RABBITMQ_VOL)
 
 up: setup
 	$(COMPOSE) up -d
@@ -58,6 +60,7 @@ clean: down
 
 fclean: clean
 	@sudo $(RM) $(DATABASE_VOL)
+	@sudo $(RM) $(RABBITMQ_VOL)
 	docker system prune -a --volumes --force
 
 pull_backend: ../backend
