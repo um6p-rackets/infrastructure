@@ -17,7 +17,9 @@
   services:
     # ========================================== Database ==========================================
     database:
-      build: ./database
+      build:
+        context: "./database"
+      pull_policy: build
       image: "database"
       container_name: database
       secrets:
@@ -37,6 +39,8 @@
         NOTIFICATION_SCHEMA: ${NOTIFICATION_SCHEMA}
       networks:
         - ft_network
+      ports:
+        - 5432:5432
       volumes:
         - database_vol:/var/lib/postgresql
       healthcheck:
@@ -67,6 +71,7 @@
     rabbitmq:
       build:
         context: ./rabbitmq
+      pull_policy: build
       image: "rabbitmq"
       container_name: rabbitmq
       secrets:
@@ -74,7 +79,7 @@
       environment:
         RABBITMQ_USER: ${RABBITMQ_USER}
       ports:
-        # - "5672:5672" # (AMQP Protocol): This is the "Engine" port. It uses a highly efficient, binary messaging protocol
+        - "5672:5672" # (AMQP Protocol): This is the "Engine" port. It uses a highly efficient, binary messaging protocol
         - "15672:15672" # (HTTP Protocol): This is the "Human" port. It serves the Management UI web dashboard
       networks:
         - bridge_network
@@ -184,7 +189,7 @@
     ft_network:
       driver: bridge
       name: "ft_network"
-      internal: true
+      # internal: true // Uncomment this line for production
     bridge_network:
       driver: bridge
       name: "bridge_network"
