@@ -37,6 +37,7 @@
         AUTH_SCHEMA: ${AUTH_SCHEMA}
         CLUB_SCHEMA: ${CLUB_SCHEMA}
         NOTIFICATION_SCHEMA: ${NOTIFICATION_SCHEMA}
+        APP_ENV: ${APP_ENV}
       networks:
         - ft_network
       ports:
