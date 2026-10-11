@@ -13,7 +13,7 @@ RABBITMQ_VOL = $(HOME)/data/rabbitmq
 MODE ?= dev
 
 ifeq ($(MODE), dev)
-  COMPOSE = docker compose -f ./docker-compose.dev.yml
+  COMPOSE = docker compose -f ./docker-compose.dev.yml --profile dev
 else ifeq ($(MODE), prod)
   COMPOSE = docker compose -f ./docker-compose.yml
 else
@@ -76,6 +76,8 @@ re: fclean all
 
 INFRA        = database rabbitmq
 CONCURRENTLY = ../backend/node_modules/.bin/concurrently
+BACKEND_NPM  = npm --prefix ../backend
+FRONTEND_NPM = npm --prefix ../frontend
 
 # Install deps only when the lockfile changes (or node_modules is missing)
 ../backend/node_modules: ../backend/package-lock.json
@@ -87,25 +89,37 @@ CONCURRENTLY = ../backend/node_modules/.bin/concurrently
 
 deps: setup ../backend/node_modules ../frontend/node_modules
 
-# --wait blocks until the containers are healthy, so the apps never start too early
-dev-infra: init
+# --wait blocks until the containers are healthy
+dev-up: init
 	$(COMPOSE) up -d --wait $(INFRA)
 
-# One terminal, flat colored logs, Ctrl-C stops everything (-k)
-watch: init dev-infra deps
-	@FORCE_COLOR=1 $(CONCURRENTLY) -k -n gateway,auth,club,notif,frontend \
-	  -c cyan,cyan,yellow,magenta,blue \
-	  "npm --prefix ../backend run start:dev:gateway" \
-	  "npm --prefix ../backend run start:dev:auth" \
-	  "npm --prefix ../backend run start:dev:club" \
-	  "npm --prefix ../backend run start:dev:notification" \
-	  "npm --prefix ../frontend run dev"
+# Generate clients + apply committed migrations (safe to run every time)
+db-sync: dev-up deps
+	@FORCE_COLOR=1 $(CONCURRENTLY) -s all -n "generate,migrate,seed" -c "magentaBright,bold.cyan,bold.yellow" \
+		"$(BACKEND_NPM) run db:generate" \
+		"$(BACKEND_NPM) run db:migrate" \
+		"$(BACKEND_NPM) run db:seed"
 
-# Single-side shortcuts for teammates who work on one part
-watch-backend: dev-infra deps
-	@npm --prefix ../backend run start:dev:all
+# One terminal, colored logs, Ctrl-C stops everything
+watch: db-sync
+	@FORCE_COLOR=1 $(CONCURRENTLY) -k -n gateway,auth,club,notif,frontend \
+	  -c cyan,green,yellow,magenta,blue \
+	  "$(BACKEND_NPM) run start:dev:gateway" \
+	  "$(BACKEND_NPM) run start:dev:auth" \
+	  "$(BACKEND_NPM) run start:dev:club" \
+	  "$(BACKEND_NPM) run start:dev:notification" \
+	  "$(FRONTEND_NPM) run dev"
+
+# !!!! [Be careful] Build from scratch and rewatch (It destroys all data in the database and rabbitmq !!!!)
+rewatch: dev-down
+	$(COMPOSE) down --volumes --remove-orphans
+	@sudo $(RM) $(DATABASE_VOL) $(RABBITMQ_VOL)
+	@$(MAKE) watch
+
+watch-backend: db-sync
+	@$(BACKEND_NPM) run start:dev:all
 watch-frontend: deps
-	@npm --prefix ../frontend run dev
+	@$(FRONTEND_NPM) run dev
 
 dev-logs:
 	$(COMPOSE) logs -f $(INFRA)
@@ -113,5 +127,5 @@ dev-down:
 	$(COMPOSE) stop $(INFRA)
 
 .PHONY: all setup init up build down stop start status clean fclean re \
-        pull_backend pull_frontend deps dev-infra watch watch-backend \
-        watch-frontend dev-logs dev-down
+        pull_backend pull_frontend deps dev-up db-sync \
+        watch rewatch watch-backend watch-frontend dev-logs dev-down
