@@ -22,6 +22,8 @@ x-auth-env: &auth-env
   DB_USER: ${AUTH_USER}
   DB_SCHEMA: ${AUTH_SCHEMA}
   DB_PASSWORD_FILE: /run/secrets/auth_service_password
+  JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN}
+  JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
 
 x-club-env: &club-env
   <<: *backend-env
@@ -130,13 +132,12 @@ services:
     container_name: api-gateway
     environment:
         <<: *backend-env
-        # JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
+        JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
     secrets:
-      # No DB secret: the gateway has no DB
       - rabbitmq_password
-      # - jwt_access_secret
+      - jwt_access_secret
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3010/api/v1/auth/test || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3010/api/v1/auth/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -156,7 +157,7 @@ services:
     secrets: 
       - rabbitmq_password
       - auth_service_password
-      # - jwt_access_secret
+      - jwt_access_secret
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -318,3 +319,5 @@ secrets:
     file: ./secrets/notification_service_password.txt
   rabbitmq_password:
     file: ./secrets/rabbitmq_password.txt
+  jwt_access_secret:
+    file: ./secrets/jwt_access_secret.txt
