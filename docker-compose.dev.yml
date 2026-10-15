@@ -76,24 +76,7 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
-
-  # ========================================== nginx ==========================================
-  nginx:
-    build:
-      context: ./nginx
-    pull_policy: build
-    image: "nginx"
-    container_name: nginx
-    ports:
-      - 443:443
-    networks:
-      - bridge_network
-      - ft_network
-    depends_on:
-      api_gateway:
-        condition: service_healthy
-    restart: unless-stopped
-
+  
   # ========================================== Rabbitmq ==========================================
   rabbitmq:
     build:
@@ -123,26 +106,32 @@ services:
 
 # ========================================== API Gateway ==========================================
   api_gateway:
-    <<: *backend-template
     build:
       context: ../backend
       args:
         APP_NAME: api-gateway
+    pull_policy: build
     image: "api-gateway"
     container_name: api-gateway
+    networks:
+      - ft_network
     environment:
         <<: *backend-env
         JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
     secrets:
       - rabbitmq_password
       - jwt_access_secret
+    # INDUSTRY STANDARD: Gateway ONLY depends on the message broker, nothing else.
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3010/api/v1/auth/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-
+    restart: unless-stopped
 
   # ========================================== Authentication ==========================================
   auth:
@@ -265,6 +254,23 @@ services:
     environment:
       <<: *notification-env
     secrets: [rabbitmq_password, notification_service_password]
+
+    # ========================================== nginx ==========================================
+  nginx:
+    build:
+      context: ./nginx
+    pull_policy: build
+    image: "nginx"
+    container_name: nginx
+    ports:
+      - 443:443
+    networks:
+      - bridge_network
+      - ft_network
+    depends_on:
+      api_gateway:
+        condition: service_healthy
+    restart: unless-stopped
 
   # ========================================== Frontend ==========================================
   frontend:
