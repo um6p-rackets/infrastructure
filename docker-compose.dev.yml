@@ -120,7 +120,7 @@ services:
         JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
         GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
         GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
-        GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+        GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
         FRONTEND_REDIRECT_URL: ${FRONTEND_REDIRECT_URL}
     secrets:
       - rabbitmq_password
