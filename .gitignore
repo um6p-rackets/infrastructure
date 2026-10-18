@@ -1,2 +1,3 @@
 secrets/google_client_id.txt
 secrets/google_client_secret.txt
+secrets/smtp_password.txt
