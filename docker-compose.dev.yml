@@ -29,6 +29,7 @@ x-auth-env: &auth-env
   SMTP_PORT: ${SMTP_PORT}
   SMTP_SECURE: ${SMTP_SECURE}
   SMTP_USER: ${SMTP_USER}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
   SMTP_PASSWORD_FILE: /run/secrets/smtp_password
 
 x-club-env: &club-env
