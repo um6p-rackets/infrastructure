@@ -24,7 +24,11 @@
 FROM rabbitmq:4-management-alpine
 
 # su-exec is tiny, and your init.sh may use it
-RUN apk add --no-cache su-exec
+# RUN apk add --no-cache su-exec
+
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.edge.kernel.org/g' /etc/apk/repositories && \
+    apk update && \
+    apk add --no-cache su-exec
 
 COPY ./tools/init.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/init.sh
