@@ -87,7 +87,7 @@ FRONTEND_NPM = npm --prefix ../frontend
 	cd ../frontend && npm install
 	@touch $@
 
-deps: setup ../backend/node_modules ../frontend/node_modules
+deps: setup ../backend/node_modules ../frontend/node_modules	
 
 # --wait blocks until the containers are healthy
 dev-up: init
@@ -111,7 +111,7 @@ watch: db-sync
 	  "$(FRONTEND_NPM) run dev"
 
 # !!!! [Be careful] Build from scratch and rewatch (It destroys all data in the database and rabbitmq !!!!)
-rewatch: dev-down
+rewatch: clean-deps dev-down
 	$(COMPOSE) down --volumes --remove-orphans
 	@sudo $(RM) $(DATABASE_VOL) $(RABBITMQ_VOL)
 	@$(MAKE) watch
@@ -121,11 +121,15 @@ watch-backend: db-sync
 watch-frontend: deps
 	@$(FRONTEND_NPM) run dev
 
+
 dev-logs:
 	$(COMPOSE) logs -f $(INFRA)
+clean-deps:
+	@sudo $(RM) ../backend/node_modules ../frontend/node_modules
+	@sudo $(RM) ../backend/dist ../frontend/.next
 dev-down:
 	$(COMPOSE) stop $(INFRA)
 
 .PHONY: all setup init up build down stop start status clean fclean re \
         pull_backend pull_frontend deps dev-up db-sync \
-        watch rewatch watch-backend watch-frontend dev-logs dev-down
+        watch rewatch watch-backend watch-frontend clean-deps dev-logs dev-down
