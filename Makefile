@@ -40,9 +40,14 @@ init:
 up: setup
 	$(COMPOSE) up -d
 
+# build: setup
+# 	$(COMPOSE) up -d --build
+	
 build: setup
-	$(COMPOSE) up -d --build
-
+	for s in database rabbitmq api_gateway auth club notification frontend nginx; do \
+		$(COMPOSE) build $$s || exit 1; done
+	$(COMPOSE) up -d
+	
 down:
 	$(COMPOSE) down
 
