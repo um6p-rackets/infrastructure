@@ -328,6 +328,8 @@ services:
     depends_on:
       api_gateway:
         condition: service_healthy
+      frontend:
+        condition: service_started
     restart: unless-stopped
 
   # ========================================== Frontend ==========================================
