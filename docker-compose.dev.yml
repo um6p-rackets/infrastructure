@@ -45,6 +45,7 @@ x-notification-env: &notification-env
   DB_USER: ${NOTIFICATION_USER}
   DB_SCHEMA: ${NOTIFICATION_SCHEMA}
   DB_PASSWORD_FILE: /run/secrets/notification_service_password
+  FRONTEND_URL: ${FRONTEND_URL}
 
 services:
   # ========================================== Database ==========================================
@@ -126,6 +127,7 @@ services:
         <<: *backend-env
         JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
         JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN}
+        FRONTEND_URL: ${FRONTEND_URL}
         GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
         GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
         GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
@@ -269,6 +271,47 @@ services:
     environment:
       <<: *notification-env
     secrets: [rabbitmq_password, notification_service_password]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+      notification_migrate:
+        condition: service_completed_successfully
+
+
+  notification_migrate:
+    build:
+      context: ../backend
+      target: migrate
+      args:
+        APP_NAME: notification-service
+    image: notification-migrate
+    container_name: notification-migrate
+    networks: [ft_network]
+    environment: *notification-env
+    secrets: [rabbitmq_password, notification_service_password]
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: "no"
+
+  notification_seed:
+    build:
+      context: ../backend
+      target: seed
+      args:
+        APP_NAME: notification-service
+    image: notification-seed
+    container_name: notification-seed
+    profiles: [dev]
+    networks: [ft_network]
+    environment: *notification-env
+    secrets: [rabbitmq_password, notification_service_password]
+    depends_on:
+      notification_migrate:
+        condition: service_completed_successfully
+    restart: "no"
 
     # ========================================== nginx ==========================================
   nginx:
@@ -291,6 +334,9 @@ services:
   frontend:
     build:
       context: ../frontend
+      args: # MUST pass as build args for Next.js to bake them into the JS
+        NEXT_PUBLIC_API_URL: ${FRONTEND_URL}
+        NEXT_PUBLIC_API_PREFIX: ${NEXT_PUBLIC_API_PREFIX}
     pull_policy: build
     image: "frontend"
     container_name: frontend
