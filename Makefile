@@ -45,7 +45,7 @@ up: setup
 	
 build: setup
 	for s in database rabbitmq api_gateway auth club notification frontend nginx; do \
-		$(COMPOSE) build $$s || exit 1; done
+		$(COMPOSE) build $$s || $(COMPOSE) build --no-cache $$s || exit 1; done
 	$(COMPOSE) up -d
 	
 down:
@@ -66,7 +66,13 @@ clean: down
 fclean: clean
 	@sudo $(RM) $(DATABASE_VOL)
 	@sudo $(RM) $(RABBITMQ_VOL)
+	docker builder prune -af
 	docker system prune -a --volumes --force
+	@sudo systemctl restart docker
+	@until docker info >/dev/null 2>&1; do sleep 1; done
+
+	@sudo systemctl restart docker
+	@sleep 2
 
 pull_backend: ../backend
 	git -C ../backend pull
