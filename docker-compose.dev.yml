@@ -156,6 +156,7 @@ services:
       context: ../backend
       args:
         APP_NAME: auth-service
+    pull_policy: build
     image: 'auth-service'
     container_name: auth-service
     environment: *auth-env
@@ -178,6 +179,7 @@ services:
       target: migrate
       args:
         APP_NAME: auth-service
+    pull_policy: build
     image: auth-migrate
     container_name: auth-migrate
     networks: [ft_network]
@@ -194,6 +196,7 @@ services:
       target: seed
       args:
         APP_NAME: auth-service
+    pull_policy: build
     image: auth-seed
     container_name: auth-seed
     profiles: [dev]
@@ -213,6 +216,7 @@ services:
       context: ../backend
       args:
         APP_NAME: club-service
+    pull_policy: build
     image: "club-service"
     container_name: club-service
     environment: *club-env
@@ -231,6 +235,7 @@ services:
       target: migrate
       args:
         APP_NAME: club-service
+    pull_policy: build
     image: club-migrate
     container_name: club-migrate
     networks: [ft_network]
@@ -247,6 +252,7 @@ services:
       target: seed
       args:
         APP_NAME: club-service
+    pull_policy: build
     image: club-seed
     container_name: club-seed
     profiles: [dev]
@@ -266,6 +272,7 @@ services:
       context: ../backend
       args:
         APP_NAME: notification-service
+    pull_policy: build
     image: "notification-service"
     container_name: notification-service
     environment:
@@ -286,6 +293,7 @@ services:
       target: migrate
       args:
         APP_NAME: notification-service
+    pull_policy: build
     image: notification-migrate
     container_name: notification-migrate
     networks: [ft_network]
@@ -302,6 +310,7 @@ services:
       target: seed
       args:
         APP_NAME: notification-service
+    pull_policy: build
     image: notification-seed
     container_name: notification-seed
     profiles: [dev]
